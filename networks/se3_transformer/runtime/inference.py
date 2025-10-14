@@ -44,7 +44,7 @@ def evaluate(model: nn.Module,
     model.eval()
     for i, batch in tqdm(enumerate(dataloader), total=len(dataloader), unit='batch', desc=f'Evaluation',
                          leave=False, disable=(args.silent or get_local_rank() != 0)):
-        *input, target = to_cuda(batch)
+        *input, target = batch  # to_cuda(batch)
 
         for callback in callbacks:
             callback.on_batch_start()

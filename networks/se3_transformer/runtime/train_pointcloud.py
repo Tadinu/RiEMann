@@ -17,6 +17,7 @@ import copy
 # import sys
 # sys.path.append("/home/gck/files/equivariant/DeepLearningExamples-master/DGLPyTorch/DrugDiscovery/SE3Transformer/se3_transformer")
 import sys
+
 sys.path.append("../..")
 sys.path.append("..")
 sys.path.append(".")
@@ -35,6 +36,7 @@ from se3_transformer.runtime.utils import to_cuda, get_local_rank, init_distribu
 import dgl
 from dgl import backend as F
 from dgl.convert import graph as dgl_graph
+
 
 def save_state(model: nn.Module, optimizer: Optimizer, epoch: int, path: pathlib.Path, callbacks: List[BaseCallback]):
     """ Saves model, optimizer and epoch states to path (only once per node) """
@@ -72,7 +74,7 @@ def train_epoch(model, train_dataloader, loss_fn, epoch_idx, grad_scaler, optimi
     loss_acc = torch.zeros((1,), device='cuda')
     for i, batch in tqdm(enumerate(train_dataloader), total=len(train_dataloader), unit='batch',
                          desc=f'Epoch {epoch_idx}', disable=(args.silent or local_rank != 0)):
-        *inputs, target = to_cuda(batch)
+        *inputs, target = batch  # to_cuda(batch)
 
         for callback in callbacks:
             callback.on_batch_start()
@@ -99,8 +101,8 @@ def train_epoch(model, train_dataloader, loss_fn, epoch_idx, grad_scaler, optimi
 
 def train(model: nn.Module,
           loss_fn: _Loss,
-        #   train_dataloader: DataLoader,
-        #   val_dataloader: DataLoader,
+          #   train_dataloader: DataLoader,
+          #   val_dataloader: DataLoader,
           callbacks: List[BaseCallback],
           logger: Logger,
           args):
@@ -119,7 +121,7 @@ def train(model: nn.Module,
         # optimizer = FusedAdam(model.parameters(), lr=args.learning_rate, betas=(args.momentum, 0.999),
         #                       weight_decay=args.weight_decay)
         optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, betas=(args.momentum, 0.999),
-                              weight_decay=args.weight_decay)
+                                      weight_decay=args.weight_decay)
     elif args.optimizer == 'lamb':
         optimizer = FusedLAMB(model.parameters(), lr=args.learning_rate, betas=(args.momentum, 0.999),
                               weight_decay=args.weight_decay)
@@ -134,13 +136,13 @@ def train(model: nn.Module,
 
     for epoch_idx in range(epoch_start, args.epochs):
         # if isinstance(train_dataloader.sampler, DistributedSampler):
-            # train_dataloader.sampler.set_epoch(epoch_idx)
+        # train_dataloader.sampler.set_epoch(epoch_idx)
 
         loss_acc = torch.zeros((1,), device='cuda')
         for i, _ in tqdm(enumerate([1]), total=1, unit='batch',
-                            desc=f'Epoch {epoch_idx}', disable=(args.silent or local_rank != 0)):
+                         desc=f'Epoch {epoch_idx}', disable=(args.silent or local_rank != 0)):
             # *inputs, target = to_cuda(batch)
-            
+
             n = 1024
             dist_threshold = 0.2
             pointcloud = np.random.rand(n, 3)
@@ -148,49 +150,50 @@ def train(model: nn.Module,
 
             dist_matrix = np.zeros((n, n))
             for i in range(n):
-                for j in range(i+1, n):
+                for j in range(i + 1, n):
                     dist_matrix[i, j] = np.linalg.norm(pointcloud[i] - pointcloud[j])
                     dist_matrix[j, i] = dist_matrix[i, j]
-            
+
             edges = []
             for i in range(n):
-                for j in range(i+1, n):
+                for j in range(i + 1, n):
                     if dist_matrix[i, j] < dist_threshold:
                         edges.append((i, j))
             edges = np.array(edges)
-            src = edges[:, 0]   # point ids
+            src = edges[:, 0]  # point ids
             dst = edges[:, 1]
             g = dgl_graph((src, dst))
 
             g.ndata["pos"] = F.tensor(pointcloud, dtype=F.data_type_dict["float32"])
             g.ndata["attr"] = F.tensor(node_attr, dtype=F.data_type_dict["float32"])
-            g.edata["edge_attr"] = F.tensor([1.]*edges.shape[0],
-                dtype=F.data_type_dict["float32"],
-            )
+            g.edata["edge_attr"] = F.tensor([1.] * edges.shape[0],
+                                            dtype=F.data_type_dict["float32"],
+                                            )
             label = F.tensor(1.,
-                dtype=F.data_type_dict["float32"],
-            )
+                             dtype=F.data_type_dict["float32"],
+                             )
 
             for callback in callbacks:
                 callback.on_batch_start()
-            
+
             def _get_relative_pos(qm9_graph: dgl.DGLGraph) -> torch.Tensor:
                 x = qm9_graph.ndata['pos']
                 src, dst = qm9_graph.edges()
                 rel_pos = x[dst] - x[src]
                 return rel_pos
-            
+
             batched_graph = dgl.batch([g])
             batched_graph.edata['rel_pos'] = _get_relative_pos(batched_graph)
-            edge_feats = {'0': batched_graph.edata['edge_attr'].unsqueeze(-1).unsqueeze(-1)}    # shape: edge_num, channel_num, feat_dim
+            edge_feats = {'0': batched_graph.edata['edge_attr'].unsqueeze(-1).unsqueeze(
+                -1)}  # shape: edge_num, channel_num, feat_dim
             node_feats = {'1': batched_graph.ndata['attr'].unsqueeze(-2)}
             targets = label
 
             inputs = [batched_graph, node_feats, edge_feats]
 
-            inputs = to_cuda(inputs)
-            targets = to_cuda(targets)
-            
+            # inputs = to_cuda(inputs)
+            # targets = to_cuda(targets)
+
             with torch.cuda.amp.autocast(enabled=args.amp):
                 pred = model(*inputs)
                 # loss = loss_fn(pred, target) / args.accumulate_grad_batches
@@ -211,8 +214,6 @@ def train(model: nn.Module,
                 model.zero_grad(set_to_none=True)
 
         loss = loss_acc / (i + 1)
-
-
 
         # loss = train_epoch(model, train_dataloader, loss_fn, epoch_idx, grad_scaler, optimizer, local_rank, callbacks,
         #                    args)
@@ -317,8 +318,8 @@ if __name__ == '__main__':
     increase_l2_fetch_granularity()
     train(model,
           loss_fn,
-        #   datamodule.train_dataloader(),
-        #   datamodule.val_dataloader(),
+          #   datamodule.train_dataloader(),
+          #   datamodule.val_dataloader(),
           callbacks,
           logger,
           args)

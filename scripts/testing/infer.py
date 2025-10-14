@@ -1,4 +1,5 @@
 import sys
+
 sys.path.append(".")
 import os
 import torch
@@ -8,6 +9,7 @@ from utils.data_utils import downsample_table
 import argparse
 import numpy as np
 from utils.utils import modified_gram_schmidt
+
 
 def main(args):
     all_cfg = OmegaConf.load(f"config/{args.exp_name}/{args.pick_or_place}/config.json")
@@ -20,13 +22,15 @@ def main(args):
 
     input_xyz = torch.tensor(pcd["xyz"]).float().unsqueeze(0).to(cfg_seg.device)
     input_rgb = torch.tensor(pcd["rgb"]).float().unsqueeze(0).to(cfg_seg.device)
-    
+
     model_dir = os.path.join("experiments", args.exp_name, args.pick_or_place)
-    policy_seg = globals()[cfg_seg.model](voxel_size=cfg_seg.voxel_size, radius_threshold=cfg_seg.radius_threshold).float().to(cfg_seg.device)
+    policy_seg = globals()[cfg_seg.model](voxel_size=cfg_seg.voxel_size,
+                                          radius_threshold=cfg_seg.radius_threshold).float().to(cfg_seg.device)
     policy_seg.load_state_dict(torch.load(os.path.join(model_dir, "segnet.pth")))
     policy_seg.eval()
 
-    policy_mani = globals()[cfg_mani.model](voxel_size=cfg_mani.voxel_size, radius_threshold=cfg_mani.radius_threshold).float().to(cfg_mani.device)
+    policy_mani = globals()[cfg_mani.model](voxel_size=cfg_mani.voxel_size,
+                                            radius_threshold=cfg_mani.radius_threshold).float().to(cfg_mani.device)
     policy_mani.load_state_dict(torch.load(os.path.join(model_dir, "maninet.pth")))
     policy_mani.eval()
 
@@ -44,19 +48,19 @@ def main(args):
 
     with torch.no_grad():
         ref_point = policy_seg(
-            {"xyz": xyz, "rgb": rgb}, 
+            {"xyz": xyz, "rgb": rgb},
             draw_pcd=True,
             pcd_name=args.setting,
         )
         output_pos, output_direction, _, _, _ = policy_mani(
-            {"xyz": xyz, "rgb": rgb}, 
-            reference_point=ref_point, 
+            {"xyz": xyz, "rgb": rgb},
+            reference_point=ref_point,
             distance_threshold=cfg_mani.distance_threshold,
-            save_ori_feature = True,
+            save_ori_feature=True,
             draw_pcd=True,
             pcd_name=args.setting,
         )
-        out_dir_schmidt = modified_gram_schmidt(output_direction.reshape(-1, 3).T, to_cuda=True)
+        out_dir_schmidt = modified_gram_schmidt(output_direction.reshape(-1, 3).T, to_cuda=False)
 
     pred_pos = output_pos.detach().cpu().numpy().reshape(3)
     pred_rot = out_dir_schmidt.detach().cpu().numpy()
@@ -65,8 +69,9 @@ def main(args):
     np.savez(result_path,
              pred_pos=pred_pos,
              pred_rot=pred_rot,
-            )
+             )
     print(f"Result saved to: {result_path}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

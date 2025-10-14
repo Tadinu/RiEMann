@@ -39,6 +39,7 @@ from tqdm import tqdm
 # import sys
 # sys.path.append("/home/gck/files/equivariant/DeepLearningExamples-master/DGLPyTorch/DrugDiscovery/SE3Transformer/se3_transformer")
 import sys
+
 sys.path.append("../..")
 sys.path.append("..")
 sys.path.append(".")
@@ -91,7 +92,7 @@ def train_epoch(model, train_dataloader, loss_fn, epoch_idx, grad_scaler, optimi
     loss_acc = torch.zeros((1,), device='cuda')
     for i, batch in tqdm(enumerate(train_dataloader), total=len(train_dataloader), unit='batch',
                          desc=f'Epoch {epoch_idx}', disable=(args.silent or local_rank != 0)):
-        *inputs, target = to_cuda(batch)
+        *inputs, target = batch  # to_cuda(batch)
 
         for callback in callbacks:
             callback.on_batch_start()
@@ -138,7 +139,7 @@ def train(model: nn.Module,
         # optimizer = FusedAdam(model.parameters(), lr=args.learning_rate, betas=(args.momentum, 0.999),
         #                       weight_decay=args.weight_decay)
         optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, betas=(args.momentum, 0.999),
-                              weight_decay=args.weight_decay)
+                                      weight_decay=args.weight_decay)
     elif args.optimizer == 'lamb':
         optimizer = FusedLAMB(model.parameters(), lr=args.learning_rate, betas=(args.momentum, 0.999),
                               weight_decay=args.weight_decay)
