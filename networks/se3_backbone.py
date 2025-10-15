@@ -187,7 +187,7 @@ class SE3Backbone(ExtendedModule):
         num_layers: int = 2,
         num_degrees: int = 4,
         num_channels: int = 8,
-        num_heads: int = 2,
+        num_heads: int = 1,
         channels_div: int = 2,
         voxelize: bool = True,
         voxel_size: float = 0.02,

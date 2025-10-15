@@ -34,27 +34,37 @@ def main(args):
 
     best_test_loss = 1e5
 
+    scaler = torch.amp.GradScaler()
+    
     for epoch in range(cfg.epoch):
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}/{cfg.epoch}")
         policy.train()
 
         for i, data in enumerate(progress_bar):
+            data["xyz"] = data["xyz"].to(cfg.device, non_blocking=True)
+            data["rgb"] = data["rgb"].to(cfg.device, non_blocking=True)
+
             optm.zero_grad()
 
-            output_pos = policy(
-                {"xyz": data["xyz"], "rgb": data["rgb"]}, 
-                random_drop=cfg.random_drop,
-                draw_pcd=cfg.draw_pcd,
-                pcd_name=f"{i}",
-                mask_part=cfg.mask_part,
-            )
-            loss = loss_fn(output_pos, data["seg_center"])
-            loss.backward()
-            optm.step()
+            with torch.amp.autocast(device_type=cfg.device):
+                output_pos = policy(
+                    {"xyz": data["xyz"], "rgb": data["rgb"]},
+                    random_drop=cfg.random_drop,
+                    draw_pcd=cfg.draw_pcd,
+                    pcd_name=f"{i}",
+                    mask_part=cfg.mask_part,
+                )
+                loss = loss_fn(output_pos, data["seg_center"])
+                scaler.scale(loss).backward()
+                scaler.step(optm)
+                scaler.update()
+                #loss.backward()
+                optm.step()
 
-            t_loss = torch.sqrt(torch.sum(torch.sqrt((output_pos-data["seg_center"]) ** 2), dim=1)).mean()
+            t_loss = torch.sqrt(torch.sum(torch.sqrt((output_pos - data["seg_center"]) ** 2), dim=1)).mean()
             progress_bar.set_postfix(loss=t_loss.item())
 
+    
         policy.eval()
         with torch.no_grad():
             test_loss = 0
@@ -77,7 +87,6 @@ def main(args):
                 print("Model saved!")
 
         scheduler.step()
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--exp_name', type=str, default="mug")

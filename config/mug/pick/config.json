@@ -1,7 +1,7 @@
 {
     "seg": {
         "model": "SE3SegNet",
-        "device": "cuda:1",
+        "device": "cuda:0",
         "data_aug": true,
         "aug_methods": [
             "downsample_table"
@@ -12,14 +12,14 @@
         "train_batch_size": 1,
         "test_batch_size": 1,
         "train_demo_ratio": 0.8,
-        "lr": 1e-3,
+        "lr": 1e-4,
         "epoch": 200,
         "voxel_size": 0.01,
         "radius_threshold": 0.1
     },
     "mani": {
         "model": "SE3ManiNet",
-        "device": "cuda:1",
+        "device": "cuda:0",
         "demo_dir": "data/demos",
         "exp_name": "mug",
         "data_aug": true, 
@@ -33,10 +33,10 @@
         "random_drop": true,
         "draw_pcd": false,
         "mask_part": true,
-        "train_batch_size": 1,
-        "test_batch_size": 1,
+        "train_batch_size": 4,
+        "test_batch_size": 4,
         "train_demo_ratio": 0.8,
-        "lr": 5e-4,
+        "lr": 1e-4,
         "epoch": 500,
         "distance_threshold": 0.16,
         "pos_warmup_epoch": 1,
@@ -44,5 +44,6 @@
         "radius_threshold": 0.07,
         "feature_point_radius": 0.02
     }
+
 
 }
