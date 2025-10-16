@@ -8,10 +8,12 @@ from networks.se3_transformer.model.layers.norm import NormSE3
 from networks.se3_transformer.model.fiber import Fiber
 from utils.utils import build_graph
 
+
 class ExtendedModule(torch.nn.Module):
     @property
     def device(self):
         return next(self.parameters()).device
+
 
 class ExtendedSequential(torch.nn.Sequential):
     def append(self, module):
@@ -23,6 +25,7 @@ class ExtendedSequential(torch.nn.Sequential):
         for module in modules:
             self.append(module)
 
+
 class Sequential(ExtendedSequential):
     """ Sequential module with arbitrary forward args and kwargs. Used to pass graph, basis and edge features. """
 
@@ -30,6 +33,7 @@ class Sequential(ExtendedSequential):
         for module in self:
             input = module(input, *args, **kwargs)
         return input
+
 
 class EquivariantNet(ExtendedModule):
     def __init__(self,
@@ -46,12 +50,12 @@ class EquivariantNet(ExtendedModule):
                  use_layer_norm: bool = True,
                  tensor_cores: bool = False,
                  low_memory: bool = False,
-                 voxelize = True,
-                 voxel_size = 0.01,
-                 radius_threshold = 0.02,
-                 final_layer_norm = False,
+                 voxelize=True,
+                 voxel_size=0.01,
+                 radius_threshold=0.02,
+                 final_layer_norm=False,
                  **kwargs):
-        
+
         super().__init__()
         self.num_layers = num_layers
         self.fiber_edge = fiber_edge
@@ -115,7 +119,11 @@ class EquivariantNet(ExtendedModule):
             batch_size = len(xyz)
 
         if not given_graph:
-            batch_graph, node_feats, edge_feats, pcds, raw_node_feats = build_graph(xyz, feature, dist_threshold=self.radius_threshold, voxelize=self.voxelize, voxel_size=self.voxel_size, fiber_in=self.fiber_in)
+            batch_graph, node_feats, edge_feats, pcds, raw_node_feats = build_graph(xyz, feature,
+                                                                                    dist_threshold=self.radius_threshold,
+                                                                                    voxelize=self.voxelize,
+                                                                                    voxel_size=self.voxel_size,
+                                                                                    fiber_in=self.fiber_in)
         else:
             batch_graph = given_graph["batch_graph"]
             node_feats = given_graph["node_feats"]
@@ -126,11 +134,12 @@ class EquivariantNet(ExtendedModule):
         if not given_basis:
             # Compute bases in case they weren't precomputed as part of the data loading
             basis = get_basis(batch_graph.edata['rel_pos'], max_degree=self.max_degree, compute_gradients=False,
-                                    use_pad_trick=self.tensor_cores and not self.low_memory,
-                                    amp=torch.is_autocast_enabled())
+                              use_pad_trick=self.tensor_cores and not self.low_memory,
+                              amp=torch.is_autocast_enabled())
 
             # Add fused bases (per output degree, per input degree, and fully fused) to the dict
-            basis = update_basis_with_fused(basis, self.max_degree, use_pad_trick=self.tensor_cores and not self.low_memory,
+            basis = update_basis_with_fused(basis, self.max_degree,
+                                            use_pad_trick=self.tensor_cores and not self.low_memory,
                                             fully_fused=self.fuse_level == ConvSE3FuseLevel.FULL)
         else:
             basis = given_basis
@@ -142,7 +151,7 @@ class EquivariantNet(ExtendedModule):
             output = torch.cat(
                 [output, node_feats[type_l].reshape(node_feats[type_l].shape[0], -1)], dim=1
             )
-        assert output.shape[-1] == self.fiber_out.num_features    # n, output_dim (no bs!)
+        assert output.shape[-1] == self.fiber_out.num_features  # n, output_dim (no bs!)
 
         if self.pooling:
             with batch_graph.local_scope():
@@ -154,13 +163,13 @@ class EquivariantNet(ExtendedModule):
                 "edge_feats": edge_feats,
                 "pcds": pcds,
                 "raw_node_feats": raw_node_feats,
-            }, basis, output # list, list, basis, tensor
+            }, basis, output  # list, list, basis, tensor
 
         # reshape raw_features to batch_sizes
         reshaped_output = []
         idx = 0
         for i in range(batch_size):
-            reshaped_output.append(output[idx:(idx+pcds[i].shape[0])])
+            reshaped_output.append(output[idx:(idx + pcds[i].shape[0])])
             idx += pcds[i].shape[0]
 
         return {
@@ -169,40 +178,40 @@ class EquivariantNet(ExtendedModule):
             "edge_feats": edge_feats,
             "pcds": pcds,
             "raw_node_feats": raw_node_feats,
-        }, basis, reshaped_output # list, list, basis, list
+        }, basis, reshaped_output  # list, list, basis, list
 
 
 class SE3Backbone(ExtendedModule):
     def __init__(
-        self,
-        fiber_in: Fiber = Fiber({
+            self,
+            fiber_in: Fiber = Fiber({
                 "0": 3,
             }),
-        fiber_out: Fiber = Fiber({
+            fiber_out: Fiber = Fiber({
                 "0": 4,
                 "1": 4,
                 "2": 4,
                 "3": 4,
             }),
-        num_layers: int = 2,
-        num_degrees: int = 4,
-        num_channels: int = 8,
-        num_heads: int = 2,
-        channels_div: int = 2,
-        voxelize: bool = True,
-        voxel_size: float = 0.02,
-        radius_threshold: float = 0.04,
-        pooling: bool = False,
+            num_layers: int = 2,
+            num_degrees: int = 4,
+            num_channels: int = 8,
+            num_heads: int = 1,
+            channels_div: int = 2,
+            voxelize: bool = True,
+            voxel_size: float = 0.02,
+            radius_threshold: float = 0.04,
+            pooling: bool = False,
     ):
         super().__init__()
         self.net = EquivariantNet(
-            num_layers=num_layers, 
-            num_degrees=num_degrees, 
-            num_channels=num_channels, 
-            num_heads=num_heads, 
+            num_layers=num_layers,
+            num_degrees=num_degrees,
+            num_channels=num_channels,
+            num_heads=num_heads,
             fiber_in=fiber_in,
             fiber_out=fiber_out,  # 1 heatmap, 3 axises
-            channels_div=channels_div, 
+            channels_div=channels_div,
             voxelize=voxelize,
             voxel_size=voxel_size,
             radius_threshold=radius_threshold,
@@ -212,7 +221,8 @@ class SE3Backbone(ExtendedModule):
     def forward(self, inputs):
         if "feature" not in inputs.keys():
             inputs["feature"] = inputs["rgb"]
-        given_graph, basis, feature = self.net(inputs)  # node_feats are the (voxelized) feature vector, and feature are feed-forward output
+        given_graph, basis, feature = self.net(
+            inputs)  # node_feats are the (voxelized) feature vector, and feature are feed-forward output
 
         return {
             "xyz": given_graph["pcds"],

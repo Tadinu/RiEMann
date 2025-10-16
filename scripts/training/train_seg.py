@@ -1,5 +1,6 @@
 import os
 import sys
+
 sys.path.append(".")
 import torch
 from networks import *
@@ -27,32 +28,41 @@ def main(args):
     train_loader = DataLoader(train_dataset, batch_size=cfg.train_batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=cfg.test_batch_size, shuffle=True)
 
-    policy = globals()[cfg.model](voxel_size=cfg.voxel_size, radius_threshold=cfg.radius_threshold).float().to(cfg.device)
+    policy = globals()[cfg.model](voxel_size=cfg.voxel_size, radius_threshold=cfg.radius_threshold).float().to(
+        cfg.device)
     optm = torch.optim.Adam(policy.parameters(), lr=cfg.lr)
-    scheduler = StepLR(optm, step_size=int(cfg.epoch/5), gamma=0.5)
+    scheduler = StepLR(optm, step_size=int(cfg.epoch / 5), gamma=0.5)
     loss_fn = torch.nn.MSELoss()
 
     best_test_loss = 1e5
+    scaler = torch.amp.GradScaler()
 
     for epoch in range(cfg.epoch):
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}/{cfg.epoch}")
         policy.train()
 
         for i, data in enumerate(progress_bar):
+            data["xyz"] = data["xyz"].to(cfg.device, non_blocking=True)
+            data["rgb"] = data["rgb"].to(cfg.device, non_blocking=True)
             optm.zero_grad()
 
-            output_pos = policy(
-                {"xyz": data["xyz"], "rgb": data["rgb"]}, 
-                random_drop=cfg.random_drop,
-                draw_pcd=cfg.draw_pcd,
-                pcd_name=f"{i}",
-                mask_part=cfg.mask_part,
-            )
-            loss = loss_fn(output_pos, data["seg_center"])
-            loss.backward()
-            optm.step()
+            print(data["xyz"].dtype, data["rgb"].dtype)
+            with torch.amp.autocast(device_type=cfg.device):
+                output_pos = policy(
+                    {"xyz": data["xyz"], "rgb": data["rgb"]},
+                    random_drop=cfg.random_drop,
+                    draw_pcd=cfg.draw_pcd,
+                    pcd_name=f"{i}",
+                    mask_part=cfg.mask_part,
+                )
+                loss = loss_fn(output_pos, data["seg_center"])
+                scaler.scale(loss).backward()
+                scaler.step(optm)
+                scaler.update()
+                # loss.backward()
+                optm.step()
 
-            t_loss = torch.sqrt(torch.sum(torch.sqrt((output_pos-data["seg_center"]) ** 2), dim=1)).mean()
+            t_loss = torch.sqrt(torch.sum(torch.sqrt((output_pos - data["seg_center"]) ** 2), dim=1)).mean()
             progress_bar.set_postfix(loss=t_loss.item())
 
         policy.eval()
@@ -60,12 +70,12 @@ def main(args):
             test_loss = 0
             for batch_idx, data in enumerate(test_loader):
                 output_pos = policy(
-                    {"xyz": data["xyz"], "rgb": data["rgb"]}, 
+                    {"xyz": data["xyz"], "rgb": data["rgb"]},
                     random_drop=False,
                     draw_pcd=cfg.draw_pcd,
                     pcd_name=f"test_{batch_idx}",
                 )
-                t_loss = torch.sqrt(torch.sum(torch.sqrt((output_pos-data["seg_center"]) ** 2), dim=1)).mean()
+                t_loss = torch.sqrt(torch.sum(torch.sqrt((output_pos - data["seg_center"]) ** 2), dim=1)).mean()
 
                 test_loss += t_loss.item()
             test_loss /= len(test_loader)
@@ -77,6 +87,7 @@ def main(args):
                 print("Model saved!")
 
         scheduler.step()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
