@@ -12,6 +12,15 @@ from tqdm import tqdm
 import argparse
 from torch.optim.lr_scheduler import StepLR
 
+if True:
+    # set random number generator seed
+    import random
+    import numpy
+    import torch
+    random.seed(2025)
+    numpy.random.seed(2025)
+    torch.manual_seed(2025)
+
 def main(cfg):
     all_cfg = OmegaConf.load(f"config/{args.exp_name}/{args.pick_or_place}/config.json")
     cfg = all_cfg.mani
@@ -125,8 +134,9 @@ def main(cfg):
             print("Epoch: ", epoch, " test pos loss: ", test_pos_loss, " test ori loss: ", test_ori_loss)
             if test_pos_loss + test_ori_loss < best_test_loss:
                 best_test_loss = test_pos_loss + test_ori_loss
-                torch.save(policy.state_dict(), os.path.join(wd, f"maninet.pth"))
-                print("Model saved!")
+                maninet_file = os.path.join(wd, f"maninet.pth")
+                torch.save(policy.state_dict(), maninet_file)
+                print("Model saved!", maninet_file)
 
         scheduler.step()
 

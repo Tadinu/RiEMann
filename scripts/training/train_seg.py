@@ -12,6 +12,16 @@ import argparse
 from torch.optim.lr_scheduler import StepLR
 
 
+if True:
+    # set random number generator seed
+    import random
+    import numpy
+    import torch
+    random.seed(2025)
+    numpy.random.seed(2025)
+    torch.manual_seed(2025)
+
+
 def main(args):
     all_cfg = OmegaConf.load(f"config/{args.exp_name}/{args.pick_or_place}/config.json")
     cfg = all_cfg.seg
@@ -34,15 +44,15 @@ def main(args):
 
     best_test_loss = 1e5
 
-    scaler = torch.amp.GradScaler()
+    #scaler = torch.amp.GradScaler()
     
     for epoch in range(cfg.epoch):
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}/{cfg.epoch}")
         policy.train()
 
         for i, data in enumerate(progress_bar):
-            data["xyz"] = data["xyz"].to(cfg.device, non_blocking=True)
-            data["rgb"] = data["rgb"].to(cfg.device, non_blocking=True)
+            #data["xyz"] = data["xyz"].to(cfg.device)
+            #data["rgb"] = data["rgb"].to(cfg.device)
 
             optm.zero_grad()
 
@@ -55,10 +65,10 @@ def main(args):
                     mask_part=cfg.mask_part,
                 )
                 loss = loss_fn(output_pos, data["seg_center"])
-                scaler.scale(loss).backward()
-                scaler.step(optm)
-                scaler.update()
-                #loss.backward()
+                #scaler.scale(loss).backward()
+                #scaler.step(optm)
+                #scaler.update()
+                loss.backward()
                 optm.step()
 
             t_loss = torch.sqrt(torch.sum(torch.sqrt((output_pos - data["seg_center"]) ** 2), dim=1)).mean()
@@ -83,8 +93,9 @@ def main(args):
 
             if test_loss < best_test_loss:
                 best_test_loss = test_loss
-                torch.save(policy.state_dict(), os.path.join(wd, f"segnet.pth"))
-                print("Model saved!")
+                segnet_file = os.path.join(wd, f"segnet.pth")
+                torch.save(policy.state_dict(), segnet_file)
+                print("Model saved!", segnet_file)
 
         scheduler.step()
 if __name__ == "__main__":
